@@ -279,6 +279,15 @@ public:
   void Rigid_Rotation(CGeometry *geometry, CConfig *config, unsigned short iZone, unsigned long iter);
 
   /*!
+   * \brief Unsteady modal displacement using rigid mesh motion.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] iZone - Zone number in the mesh.
+   * \param[in] iter - Physical time iteration number.
+   */
+  void Rigid_Modal(CGeometry *geometry, CConfig *config, unsigned short iZone, unsigned long iter);
+
+  /*!
    * \brief Unsteady pitching grid movement using rigid mesh motion.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.

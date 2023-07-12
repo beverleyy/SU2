@@ -58,14 +58,14 @@ from collections import OrderedDict
 
 def main():
 
-    #io0()       # working
-    #io1()
-    #level0()    # working
-    #level1()    # working
-    #level2()    # working
-    #level3()    # working
-    #level4()    # working
-    #level5()    # working
+    io0()       # working
+    io1()
+    level0()    # working
+    level1()    # working
+    level2()    # working
+    level3()    # working
+    level4()    # working
+    level5()    # working
 
     print('DONE!')
 

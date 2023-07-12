@@ -2132,6 +2132,8 @@ void CConfig::SetConfig_Options() {
   /*!\par CONFIG_CATEGORY: Dynamic mesh definition \ingroup Config*/
   /*--- Options related to dynamic meshes ---*/
 
+  addBoolOption("MODAL_FIX", Modal_Fixed, false);
+
   /* DESCRIPTION: Type of mesh motion */
   addEnumOption("GRID_MOVEMENT", Kind_GridMovement, GridMovement_Map, NO_MOVEMENT);
   /* DESCRIPTION: Type of surface motion */
@@ -2148,16 +2150,29 @@ void CConfig::SetConfig_Options() {
   addDoubleArrayOption("TRANSLATION_RATE", 3, Translation_Rate);
   /* DESCRIPTION: Angular velocity vector (rad/s) about x, y, & z axes (RIGID_MOTION only) */
   addDoubleArrayOption("ROTATION_RATE", 3, Rotation_Rate);
+  /* DESCRIPTION: Elastic axis (RIGID_MOTION only) */
+  addDoubleOption("X_EA", x_elas, 0.0);
+  /* DESCRIPTION: Modal forcing frequency (RIGID_MOTION only) */
+  addDoubleOption("FORCED_OMEGA", Forced_Omega, 0.0);
+  /* DESCRIPTION: Pitching amplitude (degrees) about x, y, & z axes (RIGID_MOTION only) */
+  addDoubleOption("FORCED_AMPL", Forced_Ampl, 0.0);
+  /* DESCRIPTION: Modal eigenvectors (RIGID_MOTION only) */
+  addDoubleArrayOption("FORCED_EIGENS", 3, Forced_Eigens);
   /* DESCRIPTION: Pitching angular freq. (rad/s) about x, y, & z axes (RIGID_MOTION only) */
   addDoubleArrayOption("PITCHING_OMEGA", 3, Pitching_Omega);
+  addDoubleArrayOption("PITCHING_OMEGA2", 3, Pitching_Omega2);
   /* DESCRIPTION: Pitching amplitude (degrees) about x, y, & z axes (RIGID_MOTION only) */
   addDoubleArrayOption("PITCHING_AMPL", 3, Pitching_Ampl);
+  addDoubleArrayOption("PITCHING_AMPL2", 3, Pitching_Ampl2);
   /* DESCRIPTION: Pitching phase offset (degrees) about x, y, & z axes (RIGID_MOTION only) */
   addDoubleArrayOption("PITCHING_PHASE", 3, Pitching_Phase);
+  addDoubleArrayOption("PITCHING_PHASE2", 3, Pitching_Phase2);
   /* DESCRIPTION: Plunging angular freq. (rad/s) in x, y, & z directions (RIGID_MOTION only) */
   addDoubleArrayOption("PLUNGING_OMEGA", 3, Plunging_Omega);
+  addDoubleArrayOption("PLUNGING_OMEGA2", 3, Plunging_Omega2);
   /* DESCRIPTION: Plunging amplitude (m) in x, y, & z directions (RIGID_MOTION only) */
   addDoubleArrayOption("PLUNGING_AMPL", 3, Plunging_Ampl);
+  addDoubleArrayOption("PLUNGING_AMPL2", 3, Plunging_Ampl2);
   /* DESCRIPTION: Coordinates of the rigid motion origin */
   addDoubleListOption("SURFACE_MOTION_ORIGIN", nMarkerMotion_Origin, MarkerMotion_Origin);
   /* DESCRIPTION: Translational velocity vector (m/s) in the x, y, & z directions (DEFORMING only) */

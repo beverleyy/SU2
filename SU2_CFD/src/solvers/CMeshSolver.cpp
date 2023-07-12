@@ -1078,7 +1078,6 @@ void CMeshSolver::Surface_Pitching(CGeometry *geometry, CConfig *config, unsigne
     }
   }
   /*--- For pitching we don't update the motion origin and moment reference origin. ---*/
-
 }
 
 void CMeshSolver::Surface_Rotating(CGeometry *geometry, CConfig *config, unsigned long iter) {

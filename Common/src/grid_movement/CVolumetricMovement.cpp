@@ -1999,11 +1999,189 @@ void CVolumetricMovement::Rigid_Rotation(CGeometry *geometry, CConfig *config,
 
 }
 
+void CVolumetricMovement::Rigid_Modal(CGeometry *geometry, CConfig *config, unsigned short iZone, unsigned long iter) {
+
+  /*--- Local variables ---*/
+  su2double deltaX[3], oldDeltaX[3], newDeltaX[3], newCoord[3] = {0.0, 0.0, 0.0}, Center[3], *Coord, Lref;
+  su2double Coeff[3], x_ea, Omega, Ampl;
+  su2double *GridVel, newGridVel[3] = {0.0, 0.0, 0.0}, xDot[3];
+  su2double deltaT, time_new, time_old, alpha_new, alpha_old, h_new, h_old;
+  unsigned short iDim, nDim = geometry->GetnDim();
+  unsigned long iPoint;
+  bool harmonic_balance = (config->GetTime_Marching() == TIME_MARCHING::HARMONIC_BALANCE);
+  bool adjoint = (config->GetContinuous_Adjoint() || config->GetDiscrete_Adjoint());
+
+  /*--- Retrieve values from the config file ---*/
+  deltaT = config->GetDelta_UnstTimeND();
+  Lref   = config->GetLength_Ref();
+
+  /*--- Retrieve center and eigenvalues from config ---*/
+  for (iDim = 0; iDim < 3; iDim++){
+    Center[iDim] = config->GetMotion_Origin(iDim);
+    Coeff[iDim] = config->GetForcing_Eigens(iDim);
+  }
+
+  /*--- Modal origin, frequency and amplitude from config. ---*/
+  x_ea = config->GetXElas();
+  Omega = config->GetForcing_Omega();
+  Ampl = config->GetForcing_Ampl();
+
+  if (harmonic_balance) {
+    /*--- period of oscillation & time interval using nTimeInstances ---*/
+    su2double period = config->GetHarmonicBalance_Period();
+    period /= config->GetTime_Ref();
+    deltaT = period/(su2double)(config->GetnTimeInstances());
+  }
+
+  /*--- Compute delta time based on physical time step ---*/
+  if (adjoint) {
+    /*--- For the unsteady adjoint, we integrate backwards through
+     physical time, so perform mesh motion in reverse. ---*/
+    unsigned long nFlowIter  = config->GetnTime_Iter();
+    unsigned long directIter = nFlowIter - iter - 1;
+    time_new = static_cast<su2double>(directIter)*deltaT;
+    time_old = time_new;
+    if (iter != 0) time_old = (static_cast<su2double>(directIter)+1.0)*deltaT;
+  } else {
+    /*--- Forward time for the direct problem ---*/
+    time_new = static_cast<su2double>(iter)*deltaT;
+    if (harmonic_balance) {
+      /*--- For harmonic balance, begin movement from the zero position ---*/
+      time_old = 0.0;
+    } else {
+      time_old = time_new;
+      if (iter != 0) time_old = (static_cast<su2double>(iter)-1.0)*deltaT;
+    }
+  }
+
+  if (rank == MASTER_NODE && iter == 0) {
+    cout << " Elastic axis location: " << x_ea << " m." << endl;
+    cout << " Mode eigenvector: (" << Coeff[0] << ", " << Coeff[1];
+    cout << ", " << Coeff[2] << ")." << endl;
+    cout << " Mode forcing frequency: " << Omega << " rad/s." << endl;
+    cout << " Mode forcing amplitude: " << Ampl << "." << endl;
+  }
+
+  /*--- Compute both new and old pitching/plunging displacements. ---*/
+  alpha_new = Coeff[1]*sin(Omega*time_new);
+  alpha_old = Coeff[1]*sin(Omega*time_old);
+  h_new = Coeff[0]*sin(Omega*time_new);
+  h_old = Coeff[0]*sin(Omega*time_old);
+
+  /*--- Loop over and move each node in the volume mesh. ---*/
+  /*--- Each point needs to be moved individually because displacement is a function of both x and z. ---*/
+  for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
+
+    /*--- Coordinates of the current point ---*/
+    Coord   = geometry->nodes->GetCoord(iPoint);
+    GridVel = geometry->nodes->GetGridVel(iPoint);
+
+    /*--- Compute delta change in the position in the x, y, & z directions. ---*/
+    newDeltaX[0] = Ampl*((cos(alpha_new)-1)*(Coord[0]-x_ea) + Coord[1]*sin(alpha_new));
+    newDeltaX[1] = Ampl*((cos(alpha_new)-1)*Coord[1] + (x_ea-Coord[0])*sin(alpha_new) + h_new);
+    newDeltaX[2] = 0;
+
+    oldDeltaX[0] = Ampl*((cos(alpha_old)-1)*(Coord[0]-x_ea) + Coord[1]*sin(alpha_old));
+    oldDeltaX[1] = Ampl*((cos(alpha_old)-1)*Coord[1] + (x_ea-Coord[0])*sin(alpha_old) + h_old);
+    oldDeltaX[2] = 0;
+
+    deltaX[0] = newDeltaX[0]-oldDeltaX[0];
+    deltaX[1] = newDeltaX[1]-oldDeltaX[1];
+    deltaX[2] = newDeltaX[2]-oldDeltaX[2];
+
+    /*--- Compute grid velocity due to plunge in the x, y, & z directions. ---*/
+    xDot[0] = Ampl*Omega*cos(Omega*time_new)*(Coeff[1]*(-(Coord[0]-x_ea)*sin(alpha_new) + Coord[1]*cos(alpha_new)));
+    xDot[1] = Ampl*Omega*cos(Omega*time_new)*(Coeff[1]*(-Coord[1]*sin(alpha_new) + (x_ea-Coord[0])*cos(alpha_new))+Coeff[0]*cos(Omega*time_new));
+    xDot[2] = 0;
+
+    /*--- Increment the node position using the delta values. ---*/
+    for (iDim = 0; iDim < nDim; iDim++)
+      newCoord[iDim] = Coord[iDim] + deltaX[iDim];
+
+    /*--- Cross Product of angular velocity and distance from center.
+     Note that we have assumed the grid velocities have been set to
+     an initial value in the plunging routine. ---*/
+    newGridVel[0] = GridVel[0] + xDot[0];
+    newGridVel[1] = GridVel[1] + xDot[1];
+    if (nDim == 3) newGridVel[2] = GridVel[2] + xDot[2];
+
+    /*--- Store new node location & grid velocity. Do not store the grid
+     velocity if this is an adjoint calculation. ---*/
+    for (iDim = 0; iDim < nDim; iDim++) {
+      geometry->nodes->SetCoord(iPoint, iDim, newCoord[iDim]);
+      if (!adjoint) geometry->nodes->SetGridVel(iPoint, iDim, newGridVel[iDim]);
+    }
+  }//done with all grid points
+
+  /*--- Set the mesh motion center to the new location after
+   incrementing the position with the rigid translation. This
+   new location will be used for subsequent pitching/rotation.---*/
+  for (iDim=0; iDim<3; iDim++){
+    Center[iDim] = config->GetMotion_Origin(iDim);
+  }
+
+  /*--- The displacement of the center point needs to be calculated separately because the motion is not very uniform. ---*/
+  newDeltaX[0] = Ampl*((cos(alpha_new)-1)*(Center[0]-x_ea) + Center[1]*sin(alpha_new));
+  newDeltaX[1] = Ampl*((cos(alpha_new)-1)*Center[1] + (x_ea-Center[0])*sin(alpha_new) + h_new);
+  newDeltaX[2] = 0;
+
+  oldDeltaX[0] = Ampl*((cos(alpha_old)-1)*(Center[0]-x_ea) + Center[1]*sin(alpha_old));
+  oldDeltaX[1] = Ampl*((cos(alpha_old)-1)*Center[1] + (x_ea-Center[0])*sin(alpha_old) + h_old);
+  oldDeltaX[2] = 0;
+
+  deltaX[0] = newDeltaX[0]-oldDeltaX[0];
+  deltaX[1] = newDeltaX[1]-oldDeltaX[1];
+  deltaX[2] = newDeltaX[2]-oldDeltaX[2];
+
+  for (iDim = 0; iDim < 3; iDim++){
+    Center[iDim] = Center[iDim] + deltaX[iDim];
+  }
+  config->SetMotion_Origin(Center);
+
+  /*--- As the body origin may have moved, print it to the console ---*/
+  if (rank == MASTER_NODE) {
+    cout << " Body origin: (" << Center[0]+deltaX[0];
+    cout << ", " << Center[1]+deltaX[1] << ", " << Center[2]+deltaX[2];
+    cout << ")." << endl;
+  }
+
+  /*--- Set the moment computation center to the new location after
+   incrementing the position with the plunging. ---*/
+  for (unsigned short jMarker=0; jMarker<config->GetnMarker_Monitoring(); jMarker++) {
+    Center[0] = config->GetRefOriginMoment_X(jMarker);
+    Center[1] = config->GetRefOriginMoment_Y(jMarker);
+    Center[2] = config->GetRefOriginMoment_Z(jMarker);
+
+    /*--- The displacement of the center point needs to be calculated separately because the motion is not very uniform. ---*/
+    newDeltaX[0] = Ampl*((cos(alpha_new)-1)*(Center[0]-x_ea) + Center[1]*sin(alpha_new));
+    newDeltaX[1] = Ampl*((cos(alpha_new)-1)*Center[1] + (x_ea-Center[0])*sin(alpha_new) + h_new);
+    newDeltaX[2] = 0;
+
+    oldDeltaX[0] = Ampl*((cos(alpha_old)-1)*(Center[0]-x_ea) + Center[1]*sin(alpha_old));
+    oldDeltaX[1] = Ampl*((cos(alpha_old)-1)*Center[1] + (x_ea-Center[0])*sin(alpha_old) + h_old);
+    oldDeltaX[2] = 0;
+
+    deltaX[0] = newDeltaX[0]-oldDeltaX[0];
+    deltaX[1] = newDeltaX[1]-oldDeltaX[1];
+    deltaX[2] = newDeltaX[2]-oldDeltaX[2];
+
+    config->SetRefOriginMoment_X(jMarker, Center[0]+deltaX[0]);
+    config->SetRefOriginMoment_Y(jMarker, Center[1]+deltaX[1]);
+    config->SetRefOriginMoment_Z(jMarker, Center[2]+deltaX[2]);
+  }
+
+  /*--- After moving all nodes, update geometry class ---*/
+
+  UpdateDualGrid(geometry, config);
+
+}
+
 void CVolumetricMovement::Rigid_Pitching(CGeometry *geometry, CConfig *config, unsigned short iZone, unsigned long iter) {
 
   /*--- Local variables ---*/
   su2double r[3] = {0.0,0.0,0.0}, rotCoord[3] = {0.0,0.0,0.0}, *Coord, Center[3] = {0.0,0.0,0.0},
-  Omega[3] = {0.0,0.0,0.0}, Ampl[3] = {0.0,0.0,0.0}, Phase[3] = {0.0,0.0,0.0};
+  Omega[3] = {0.0,0.0,0.0}, Ampl[3] = {0.0,0.0,0.0}, Phase[3] = {0.0,0.0,0.0},
+  Omega2[3] = {0.0,0.0,0.0}, Ampl2[3] = {0.0,0.0,0.0}, Phase2[3] = {0.0,0.0,0.0};
   su2double Lref, deltaT, alphaDot[3], *GridVel, newGridVel[3] = {0.0,0.0,0.0};
   su2double rotMatrix[3][3] = {{0.0,0.0,0.0}, {0.0,0.0,0.0}, {0.0,0.0,0.0}};
   su2double dtheta, dphi, dpsi, cosTheta, sinTheta;
@@ -2024,9 +2202,14 @@ void CVolumetricMovement::Rigid_Pitching(CGeometry *geometry, CConfig *config, u
 
   for (iDim = 0; iDim < 3; iDim++){
     Center[iDim] = config->GetMotion_Origin(iDim);
+
     Omega[iDim]  = config->GetPitching_Omega(iDim)/config->GetOmega_Ref();
     Ampl[iDim]   = config->GetPitching_Ampl(iDim)*DEG2RAD;
     Phase[iDim]  = config->GetPitching_Phase(iDim)*DEG2RAD;
+
+    Omega2[iDim]  = config->GetPitching_Omega2(iDim)/config->GetOmega_Ref();
+    Ampl2[iDim]   = config->GetPitching_Ampl2(iDim)*DEG2RAD;
+    Phase2[iDim]  = config->GetPitching_Phase2(iDim)*DEG2RAD;
   }
 
 
@@ -2064,11 +2247,19 @@ void CVolumetricMovement::Rigid_Pitching(CGeometry *geometry, CConfig *config, u
   dphi   = -Ampl[1]*(sin(Omega[1]*time_new + Phase[1]) - sin(Omega[1]*time_old + Phase[1]));
   dpsi   = -Ampl[2]*(sin(Omega[2]*time_new + Phase[2]) - sin(Omega[2]*time_old + Phase[2]));
 
+  dtheta = dtheta - Ampl2[0]*(sin(Omega2[0]*time_new + Phase2[0]) - sin(Omega2[0]*time_old + Phase2[0]));
+  dphi   = dphi - Ampl2[1]*(sin(Omega2[1]*time_new + Phase2[1]) - sin(Omega2[1]*time_old + Phase2[1]));
+  dpsi   = dpsi - Ampl2[2]*(sin(Omega2[2]*time_new + Phase2[2]) - sin(Omega2[2]*time_old + Phase2[2]));
+
   /*--- Angular velocity at the new time ---*/
 
   alphaDot[0] = -Omega[0]*Ampl[0]*cos(Omega[0]*time_new + Phase[0]);
   alphaDot[1] = -Omega[1]*Ampl[1]*cos(Omega[1]*time_new + Phase[1]);
   alphaDot[2] = -Omega[2]*Ampl[2]*cos(Omega[2]*time_new + Phase[2]);
+
+  alphaDot[0] = alphaDot[0] - Omega2[0]*Ampl2[0]*cos(Omega2[0]*time_new + Phase2[0]);
+  alphaDot[1] = alphaDot[1] - Omega2[1]*Ampl2[1]*cos(Omega2[1]*time_new + Phase2[1]);
+  alphaDot[2] = alphaDot[2] - Omega2[2]*Ampl2[2]*cos(Omega2[2]*time_new + Phase2[2]);
 
   if (rank == MASTER_NODE && iter == 0) {
       cout << " Pitching frequency: (" << Omega[0] << ", " << Omega[1];
@@ -2154,7 +2345,7 @@ void CVolumetricMovement::Rigid_Pitching(CGeometry *geometry, CConfig *config, u
 void CVolumetricMovement::Rigid_Plunging(CGeometry *geometry, CConfig *config, unsigned short iZone, unsigned long iter) {
 
   /*--- Local variables ---*/
-  su2double deltaX[3], newCoord[3] = {0.0, 0.0, 0.0}, Center[3], *Coord, Omega[3], Ampl[3], Lref;
+  su2double deltaX[3], newCoord[3] = {0.0, 0.0, 0.0}, Center[3], *Coord, Omega[3], Ampl[3], Omega2[3], Ampl2[3], Lref;
   su2double *GridVel, newGridVel[3] = {0.0, 0.0, 0.0}, xDot[3];
   su2double deltaT, time_new, time_old;
   unsigned short iDim, nDim = geometry->GetnDim();
@@ -2168,8 +2359,12 @@ void CVolumetricMovement::Rigid_Plunging(CGeometry *geometry, CConfig *config, u
 
   for (iDim = 0; iDim < 3; iDim++){
     Center[iDim] = config->GetMotion_Origin(iDim);
+
     Omega[iDim]  = config->GetPlunging_Omega(iDim)/config->GetOmega_Ref();
     Ampl[iDim]   = config->GetPlunging_Ampl(iDim)/Lref;
+
+    Omega2[iDim]  = config->GetPlunging_Omega2(iDim)/config->GetOmega_Ref();
+    Ampl2[iDim]   = config->GetPlunging_Ampl2(iDim)/Lref;
   }
 
   /*--- Plunging frequency and amplitude from config. ---*/
@@ -2207,10 +2402,18 @@ void CVolumetricMovement::Rigid_Plunging(CGeometry *geometry, CConfig *config, u
   deltaX[1] = -Ampl[1]*(sin(Omega[1]*time_new) - sin(Omega[1]*time_old));
   deltaX[2] = -Ampl[2]*(sin(Omega[2]*time_new) - sin(Omega[2]*time_old));
 
+  deltaX[0] = deltaX[0] - Ampl2[0]*(sin(Omega2[0]*time_new) - sin(Omega2[0]*time_old));
+  deltaX[1] = deltaX[1] - Ampl2[1]*(sin(Omega2[1]*time_new) - sin(Omega2[1]*time_old));
+  deltaX[2] = deltaX[2] - Ampl2[2]*(sin(Omega2[2]*time_new) - sin(Omega2[2]*time_old));
+
   /*--- Compute grid velocity due to plunge in the x, y, & z directions. ---*/
   xDot[0] = -Ampl[0]*Omega[0]*(cos(Omega[0]*time_new));
   xDot[1] = -Ampl[1]*Omega[1]*(cos(Omega[1]*time_new));
   xDot[2] = -Ampl[2]*Omega[2]*(cos(Omega[2]*time_new));
+
+  xDot[0] = xDot[0] - Ampl2[0]*Omega2[0]*(cos(Omega2[0]*time_new));
+  xDot[1] = xDot[1] - Ampl2[1]*Omega2[1]*(cos(Omega2[1]*time_new));
+  xDot[2] = xDot[2] - Ampl2[2]*Omega2[2]*(cos(Omega2[2]*time_new));
 
   if (rank == MASTER_NODE && iter == 0) {
     cout << " Plunging frequency: (" << Omega[0] << ", " << Omega[1];

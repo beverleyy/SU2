@@ -48,6 +48,9 @@ void CIteration::SetGrid_Movement(CGeometry** geometry, CSurfaceMovement* surfac
        of rigid mesh motion. These routines also compute analytic grid
        velocities for the fine mesh. ---*/
 
+      if (config->GetModal_Fixed())
+        grid_movement->Rigid_Modal(geometry[MESH_0], config, val_iZone, TimeIter);
+      
       grid_movement->Rigid_Translation(geometry[MESH_0], config, val_iZone, TimeIter);
       grid_movement->Rigid_Plunging(geometry[MESH_0], config, val_iZone, TimeIter);
       grid_movement->Rigid_Pitching(geometry[MESH_0], config, val_iZone, TimeIter);
@@ -75,7 +78,9 @@ void CIteration::SetGrid_Movement(CGeometry** geometry, CSurfaceMovement* surfac
         /*--- Move each node in the volume mesh using the specified type
          of rigid mesh motion. These routines also compute analytic grid
          velocities for the fine mesh. ---*/
-
+        if (config->GetModal_Fixed())
+          grid_movement->Rigid_Modal(geometry[MESH_0], config, val_iZone, TimeIter);
+          
         grid_movement->Rigid_Translation(geometry[MESH_0], config, val_iZone, TimeIter);
         grid_movement->Rigid_Plunging(geometry[MESH_0], config, val_iZone, TimeIter);
         grid_movement->Rigid_Pitching(geometry[MESH_0], config, val_iZone, TimeIter);

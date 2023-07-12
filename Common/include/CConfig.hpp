@@ -927,14 +927,25 @@ private:
   Collective_Pitch;               /*!< \brief Collective pitch for rotorcraft simulations. */
   su2double Mach_Motion;          /*!< \brief Mach number based on mesh velocity and freestream quantities. */
 
+  bool Modal_Fixed;
+  su2double x_elas,
+  Forced_Omega,
+  Forced_Ampl,
+  Forced_Eigens[3] = {0.0};
+
   su2double Motion_Origin[3] = {0.0}, /*!< \brief Mesh motion origin. */
   Translation_Rate[3] = {0.0},        /*!< \brief Translational velocity of the mesh. */
   Rotation_Rate[3] = {0.0},           /*!< \brief Angular velocity of the mesh . */
   Pitching_Omega[3] = {0.0},          /*!< \brief Angular frequency of the mesh pitching. */
+  Pitching_Omega2[3] = {0.0},
   Pitching_Ampl[3] = {0.0},           /*!< \brief Pitching amplitude. */
+  Pitching_Ampl2[3] = {0.0},
   Pitching_Phase[3] = {0.0},          /*!< \brief Pitching phase offset. */
+  Pitching_Phase2[3] = {0.0},
   Plunging_Omega[3] = {0.0},          /*!< \brief Angular frequency of the mesh plunging. */
-  Plunging_Ampl[3] = {0.0};           /*!< \brief Plunging amplitude. */
+  Plunging_Omega2[3] = {0.0},
+  Plunging_Ampl[3] = {0.0},           /*!< \brief Plunging amplitude. */
+  Plunging_Ampl2[3] = {0.0};
   su2double *MarkerMotion_Origin, /*!< \brief Mesh motion origin of marker. */
   *MarkerTranslation_Rate,        /*!< \brief Translational velocity of marker. */
   *MarkerRotation_Rate,           /*!< \brief Angular velocity of marker. */
@@ -5846,12 +5857,20 @@ public:
    */
   su2double GetMarkerRotationRate(unsigned short iMarkerMoving, unsigned short iDim) const { return MarkerRotation_Rate[3*iMarkerMoving + iDim];}
 
+  bool GetModal_Fixed(void) const { return Modal_Fixed; }
+
+  su2double GetXElas(void) const { return x_elas; }
+  su2double GetForcing_Omega(void) const { return Forced_Omega; }
+  su2double GetForcing_Ampl(void) const { return Forced_Ampl; }
+  su2double GetForcing_Eigens(unsigned short iDim) const { return Forced_Eigens[iDim]; }
+
   /*!
    * \brief Get the pitching rate of the mesh.
    * \param[in] iDim - spatial component
    * \return Angular frequency of the mesh pitching.
    */
-  su2double GetPitching_Omega(unsigned short iDim) const { return Pitching_Omega[iDim];}
+  su2double GetPitching_Omega(unsigned short iDim) const { return Pitching_Omega[iDim]; }
+  su2double GetPitching_Omega2(unsigned short iDim) const { return Pitching_Omega2[iDim]; }
 
   /*!
    * \brief Get pitching rate of the marker.
@@ -5867,6 +5886,7 @@ public:
    * \return pitching amplitude of the mesh.
    */
   su2double GetPitching_Ampl(unsigned short iDim) const { return Pitching_Ampl[iDim];}
+  su2double GetPitching_Ampl2(unsigned short iDim) const { return Pitching_Ampl2[iDim];}
 
   /*!
    * \brief Get pitching amplitude of the marker.
@@ -5882,6 +5902,7 @@ public:
    * \return pitching phase of the mesh.
    */
   su2double GetPitching_Phase(unsigned short iDim) const { return Pitching_Phase[iDim];}
+  su2double GetPitching_Phase2(unsigned short iDim) const { return Pitching_Phase2[iDim];}
 
   /*!
    * \brief Get pitching phase of the marker.
@@ -5897,6 +5918,7 @@ public:
    * \return Angular frequency of the mesh plunging.
    */
   su2double GetPlunging_Omega(unsigned short iDim) const { return Plunging_Omega[iDim];}
+  su2double GetPlunging_Omega2(unsigned short iDim) const { return Plunging_Omega2[iDim];}
 
   /*!
    * \brief Get plunging rate of the marker.
@@ -5912,6 +5934,7 @@ public:
    * \return Plunging amplitude of the mesh.
    */
   su2double GetPlunging_Ampl(unsigned short iDim) const { return Plunging_Ampl[iDim];}
+  su2double GetPlunging_Ampl2(unsigned short iDim) const { return Plunging_Ampl2[iDim];}
 
   /*!
    * \brief Get plunging amplitude of the marker.
