@@ -978,6 +978,8 @@ void CMeshSolver::Surface_Pitching(CGeometry *geometry, CConfig *config, unsigne
   unsigned long iPoint, iVertex;
   string Marker_Tag, Moving_Tag;
 
+  bool harmonic_balance = (config->GetTime_Marching() == TIME_MARCHING::HARMONIC_BALANCE);
+
   /*--- Retrieve values from the config file ---*/
 
   deltaT = config->GetDelta_UnstTimeND();
@@ -985,9 +987,37 @@ void CMeshSolver::Surface_Pitching(CGeometry *geometry, CConfig *config, unsigne
 
   /*--- Compute delta time based on physical time step ---*/
 
-  time_new = iter*deltaT;
-  if (iter == 0) time_old = time_new;
-  else time_old = (iter-1)*deltaT;
+  // time_new = iter*deltaT;
+  // if (iter == 0) time_old = time_new;
+  // else time_old = (iter-1)*deltaT;
+
+  if (harmonic_balance) {
+    /*--- period of oscillation & time interval using nTimeInstances ---*/
+    su2double period = config->GetHarmonicBalance_Period();
+    period /= config->GetTime_Ref();
+    deltaT = period/(su2double)(config->GetnTimeInstances());
+  }
+
+  /*--- Compute delta time based on physical time step ---*/
+  // if (adjoint) {
+  //   /*--- For the unsteady adjoint, we integrate backwards through
+  //    physical time, so perform mesh motion in reverse. ---*/
+  //   unsigned long nFlowIter  = config->GetnTime_Iter();
+  //   unsigned long directIter = nFlowIter - iter - 1;
+  //   time_new = static_cast<su2double>(directIter)*deltaT;
+  //   time_old = time_new;
+  //   if (iter != 0) time_old = (static_cast<su2double>(directIter)+1.0)*deltaT;
+  // } else {
+    /*--- Forward time for the direct problem ---*/
+    time_new = static_cast<su2double>(iter)*deltaT;
+    if (harmonic_balance) {
+      /*--- For harmonic balance, begin movement from the zero position ---*/
+      time_old = 0.0;
+    } else {
+      time_old = time_new;
+      if (iter != 0) time_old = (static_cast<su2double>(iter)-1.0)*deltaT;
+    }
+  // }
 
   /*--- Store displacement of each node on the pitching surface ---*/
   /*--- Loop over markers and find the particular marker(s) (surface) to pitch ---*/
@@ -1092,6 +1122,7 @@ void CMeshSolver::Surface_Rotating(CGeometry *geometry, CConfig *config, unsigne
   unsigned short iMarker, jMarker, iDim;
   unsigned long iPoint, iVertex;
   string Marker_Tag, Moving_Tag;
+  bool harmonic_balance = (config->GetTime_Marching() == TIME_MARCHING::HARMONIC_BALANCE);
 
   /*--- Retrieve values from the config file ---*/
 
@@ -1100,9 +1131,29 @@ void CMeshSolver::Surface_Rotating(CGeometry *geometry, CConfig *config, unsigne
 
   /*--- Compute delta time based on physical time step ---*/
 
-  time_new = iter*deltaT;
-  if (iter == 0) time_old = time_new;
-  else time_old = (iter-1)*deltaT;
+  // time_new = iter*deltaT;
+  // if (iter == 0) time_old = time_new;
+  // else time_old = (iter-1)*deltaT;
+
+  // if (adjoint) {
+  //   /*--- For the unsteady adjoint, we integrate backwards through
+  //    physical time, so perform mesh motion in reverse. ---*/
+  //   unsigned long nFlowIter  = config->GetnTime_Iter();
+  //   unsigned long directIter = nFlowIter - iter - 1;
+  //   time_new = static_cast<su2double>(directIter)*deltaT;
+  //   time_old = time_new;
+  //   if (iter != 0) time_old = (static_cast<su2double>(directIter)+1.0)*deltaT;
+  // } else {
+    /*--- Forward time for the direct problem ---*/
+    time_new = static_cast<su2double>(iter)*deltaT;
+    if (harmonic_balance) {
+      /*--- For harmonic balance, begin movement from the zero position ---*/
+      time_old = 0.0;
+    } else {
+      time_old = time_new;
+      if (iter != 0) time_old = (static_cast<su2double>(iter)-1.0)*deltaT;
+    }
+  // }
 
   /*--- Store displacement of each node on the rotating surface ---*/
   /*--- Loop over markers and find the particular marker(s) (surface) to rotate ---*/
@@ -1255,6 +1306,7 @@ void CMeshSolver::Surface_Plunging(CGeometry *geometry, CConfig *config, unsigne
   unsigned long iPoint, iVertex;
   string Marker_Tag, Moving_Tag;
   unsigned short iDim;
+  bool harmonic_balance = (config->GetTime_Marching() == TIME_MARCHING::HARMONIC_BALANCE);
 
   /*--- Retrieve values from the config file ---*/
 
@@ -1263,9 +1315,29 @@ void CMeshSolver::Surface_Plunging(CGeometry *geometry, CConfig *config, unsigne
 
   /*--- Compute delta time based on physical time step ---*/
 
-  time_new = iter*deltaT;
-  if (iter == 0) time_old = time_new;
-  else time_old = (iter-1)*deltaT;
+  // time_new = iter*deltaT;
+  // if (iter == 0) time_old = time_new;
+  // else time_old = (iter-1)*deltaT;
+
+  // if (adjoint) {
+  //   /*--- For the unsteady adjoint, we integrate backwards through
+  //    physical time, so perform mesh motion in reverse. ---*/
+  //   unsigned long nFlowIter  = config->GetnTime_Iter();
+  //   unsigned long directIter = nFlowIter - iter - 1;
+  //   time_new = static_cast<su2double>(directIter)*deltaT;
+  //   time_old = time_new;
+  //   if (iter != 0) time_old = (static_cast<su2double>(directIter)+1.0)*deltaT;
+  // } else {
+    /*--- Forward time for the direct problem ---*/
+    time_new = static_cast<su2double>(iter)*deltaT;
+    if (harmonic_balance) {
+      /*--- For harmonic balance, begin movement from the zero position ---*/
+      time_old = 0.0;
+    } else {
+      time_old = time_new;
+      if (iter != 0) time_old = (static_cast<su2double>(iter)-1.0)*deltaT;
+    }
+  // }
 
   /*--- Store displacement of each node on the plunging surface ---*/
   /*--- Loop over markers and find the particular marker(s) (surface) to plunge ---*/
@@ -1370,6 +1442,27 @@ void CMeshSolver::Surface_Translating(CGeometry *geometry, CConfig *config, unsi
   unsigned long iPoint, iVertex;
   string Marker_Tag, Moving_Tag;
   unsigned short iDim;
+  bool harmonic_balance = (config->GetTime_Marching() == TIME_MARCHING::HARMONIC_BALANCE);
+
+  // if (adjoint) {
+  //   /*--- For the unsteady adjoint, we integrate backwards through
+  //    physical time, so perform mesh motion in reverse. ---*/
+  //   unsigned long nFlowIter  = config->GetnTime_Iter();
+  //   unsigned long directIter = nFlowIter - iter - 1;
+  //   time_new = static_cast<su2double>(directIter)*deltaT;
+  //   time_old = time_new;
+  //   if (iter != 0) time_old = (static_cast<su2double>(directIter)+1.0)*deltaT;
+  // } else {
+    /*--- Forward time for the direct problem ---*/
+    time_new = static_cast<su2double>(iter)*deltaT;
+    if (harmonic_balance) {
+      /*--- For harmonic balance, begin movement from the zero position ---*/
+      time_old = 0.0;
+    } else {
+      time_old = time_new;
+      if (iter != 0) time_old = (static_cast<su2double>(iter)-1.0)*deltaT;
+    }
+  // }
 
   /*--- Retrieve values from the config file ---*/
 

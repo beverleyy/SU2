@@ -173,6 +173,21 @@ def main():
       except KeyboardInterrupt as exception :
         if myid == rootProcess:
           print('A KeyboardInterrupt occured in FSIInterface.UnsteadyFSI : ',exception)
+    # --- Add harmonic balance code to FSI ---#
+    # ---------- YeoKWB 18 Jul 2023 ----------#
+    elif FSI_config['TIME_MARCHING'] == "HARMONIC_BALANCE":
+      try:
+        FSIInterface.hbFSI(FSI_config, FluidSolver, SolidSolver)
+      except NameError as exception:
+        if myid == rootProcess:
+          print('An NameError occured in FSIInterface.hbFSI : ',exception)
+      except TypeError as exception:
+        if myid == rootProcess:
+          print('A TypeError occured in FSIInterface.hbFSI : ',exception)
+      except KeyboardInterrupt as exception :
+        if myid == rootProcess:
+          print('A KeyboardInterrupt occured in FSIInterface.hbFSI : ',exception)
+    # --- End new harmonic balance part --- #
     else:
       try:
         FSIInterface.SteadyFSI(FSI_config, FluidSolver, SolidSolver)

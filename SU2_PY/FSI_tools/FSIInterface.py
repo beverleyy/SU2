@@ -1876,6 +1876,143 @@ class Interface:
 
         return globalIndex
 
+    def hbFSI(self,FSI_config,FluidSolver,SolidSolver):
+      """
+      Run the harmonic balance FSI computation by synchronizing the fluid and solid solvers.
+      F/s interface data are exchanged through interface mapping and interpolation (if non-matching meshes).
+      [Added by YeoKWB, 17 Jul '23]
+      """
+
+      if self.have_MPI:
+        myid = self.comm.Get_rank()
+        numberPart = self.comm.Get_size()
+      else:
+        myid = 0
+        numberPart = 1
+
+      period = FSI_config['HB_PERIOD']
+      nTimeInstances = FSI_config['TIME_INSTANCES']
+      deltaT = period/nTimeInstances
+
+      NbFSIIterMax = FSI_config['NB_FSI_ITER']    #max. no. of fsi iteration per timestep
+      FSITolerance = FSI_config['FSI_TOLERANCE']  #f/s interface tolerance
+
+      NbTimeIter = int(nTimeInstances)
+      time = 0.0                        #for hb, we start from t=0 as initial
+      TimeIter = 0                      #initial time iteration
+
+      varCoordNorm = 0.0  #fsi residual
+      FSIConv = False     #fsi conv. flag
+
+      self.MPIPrint('\n*****************************************')
+      self.MPIPrint('* Begin HarmonicBalance FSI computation *')
+      self.MPIPrint('*****************************************\n')
+
+      # --- Loop through all the time instances ---#
+      while TimeIter <= NbTimeIter:
+        #if TimeIter > TimeIterTreshold:
+        NbFSIIter = NbFSIIterMax
+        self.MPIPrint("\n")
+        self.MPIPrint(" Enter Block Gauss Seidel (BGS) method for strong coupling FSI on time iteration {} ".format(TimeIter).center(80,"*"))
+        #else:
+        #  NbFSIIter = 1
+
+        self.FSIIter = 0
+        FSIConv = False
+
+        # --- Initialize the coupled solution ---#
+        # Assume no restart
+        self.MPIPrint('Setting FSI initial conditions...')
+        if myid in self.solidSolverProcessors:
+          SolidSolver.setInitialDisplacements()
+        self.getSolidInterfaceDisplacement(SolidSolver)
+        self.interpolateSolidPositionOnFluidMesh(FSI_config)
+        self.setFluidInterfaceVarCoord(FluidSolver)
+        self.MPIPrint('\nPerforming static mesh deformation (ALE) of initial mesh...\n')
+        if myid in self.fluidSolverProcessors:
+          #FluidSolver.SetInitialMesh()	# if there is an initial deformation in the solid, it has to be communicated to the fluid solver
+          #self.MPIPrint('\nInitial mesh set...')
+          if myid in self.fluidSolverProcessors:
+            if self.FSIIter == 0:
+              FluidSolver.Preprocess(TimeIter)
+              self.MPIPrint('\nCompleted preprocessing...')
+            else:
+              FluidSolver.DynamicMeshUpdate(TimeIter)
+              self.MPIPrint('\nUpdated dynamic mesh...')
+        self.MPIPrint('\nFSI initial conditions are set.')
+        self.MPIPrint('Beginning time integration...\n')
+
+        TimeIter += 1
+        time += deltaT
+
+      # --- External FSI loop --- #
+      while self.FSIIter < NbFSIIterMax:
+        self.MPIPrint("\n>>>> FSI iteration {} <<<<".format(self.FSIIter))
+        self.MPIPrint('\nLaunching fluid solver for a HB computation...')
+        # --- Fluid solver call for FSI subiteration ---#
+        self.FSIIter = 0
+        TimeIter = 0
+        time = 0.0
+
+        while TimeIter <= NbTimeIter:
+          if myid in self.fluidSolverProcessors:
+            FluidSolver.ResetConvergence() #This is setting to zero the convergence in the integrator, important to reset it.
+            # The mesh will be deformed in the context of the preprocessor, there is no need to set the initial
+            # mesh pushing back the solution to avoid spurious velocities, as the velocity is not computed at all
+            # self.MPIPrint('\nPerforming static mesh deformation...\n')
+            # if self.FSIIter == 0:
+            #   FluidSolver.Preprocess(TimeIter)# This will attempt to always set the initial condition, but there is a flag on the unsteady computation that will avoid it
+            # else:
+            #   FluidSolver.DynamicMeshUpdate(TimeIter)
+            FluidSolver.Preprocess(0)
+            FluidSolver.Run()
+            FluidSolver.Postprocess()
+            FluidSolver.Monitor(0) #This is actually not needed, it only saves the fact that the fluid solver converged innerly or reached max iterations
+            FluidSolver.Output(0)
+            TimeIter += 1
+            time += deltaT
+
+        # --- Surface fluid loads interpolation and communication ---#
+        if not self.ImposedMotion:
+          self.MPIPrint('\nProcessing interface fluid loads...\n')
+          self.MPIBarrier()
+          self.getFluidInterfaceNodalForce(FSI_config, FluidSolver)
+          self.MPIBarrier()
+          self.interpolateFluidLoadsOnSolidMesh(FSI_config)
+          self.setSolidInterfaceLoads(SolidSolver, FSI_config)
+          # --- Solid solver call for FSI subiteration --- #
+          self.MPIPrint('\nLaunching solid solver for a static computation...\n')
+          if myid in self.solidSolverProcessors:
+            SolidSolver.run(0.0)
+            SolidSolver.writeSolution(0.0, 0, self.FSIIter)
+
+        # --- Compute and monitor the FSI residual --- #
+        varCoordNorm = self.computeSolidInterfaceResidual(SolidSolver)
+        self.MPIPrint('\nFSI displacement norm : {}\n'.format(varCoordNorm))
+        self.writeFSIHistory(0, 0.0, varCoordNorm, False)
+        if varCoordNorm < FSITolerance:
+          break
+
+        # --- Relaxe the solid displacement and update the solid solution --- #
+        self.MPIPrint('\nProcessing interface displacements...\n')
+        self.relaxSolidPosition(FSI_config)
+        if myid in self.solidSolverProcessors:
+          SolidSolver.updateSolution()
+
+        # --- Mesh morphing step (displacement interpolation, displacements communication, and mesh morpher call) --- #
+        self.interpolateSolidPositionOnFluidMesh(FSI_config)
+        self.setFluidInterfaceVarCoord(FluidSolver)
+        self.FSIIter += 1
+
+      self.MPIBarrier()
+
+      self.MPIPrint('\nBGS is converged (strong coupling)')
+      self.MPIPrint(' ')
+      self.MPIPrint('*************************')
+      self.MPIPrint('*  End FSI computation  *')
+      self.MPIPrint('*************************')
+      self.MPIPrint(' ')
+
 
     def UnsteadyFSI(self,FSI_config, FluidSolver, SolidSolver):
           """
@@ -2173,7 +2310,7 @@ class Interface:
 
       self.comm.Bcast(modesNumber, root=self.rootProcess)
 
-      for mode in range(np.asscalar(modesNumber)):
+      for mode in range(np.ndarray.item(modesNumber)):
         self.MPIPrint("Setting mode {} active".format(mode))
         if myid in self.solidSolverProcessors:
           SolidSolver.activateMode(mode)

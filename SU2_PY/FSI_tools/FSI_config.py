@@ -83,6 +83,7 @@ class FSIConfig:
             if (this_param == "NDIM")	or \
                (this_param == "RESTART_ITER")	or \
                (this_param == "TIME_TRESHOLD") or \
+               (this_param == "TIME_INSTANCES") or \
                (this_param == "NB_FSI_ITER") :
                 self._ConfigContent[this_param] = int(this_value)
 
@@ -91,6 +92,7 @@ class FSIConfig:
                  (this_param == "AITKEN_PARAM") or \
                  (this_param == "UNST_TIMESTEP") or \
                  (this_param == "UNST_TIME") or \
+                 (this_param == "HB_PERIOD") or \
                  (this_param == "FSI_TOLERANCE") :
                 self._ConfigContent[this_param] = float(this_value)
 
